@@ -2,7 +2,8 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<!-- viewport-fit=cover + fixed scale prevents Safari from autoscaling -->
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <title>360° Product Viewer</title>
 
 <!-- ease360's stylesheet -->
@@ -35,19 +36,15 @@
     cursor: grab;
     transform-origin: center center;
     transition: transform 0.15s ease-out;
-
-    /* Sharpen images on high-DPI screens like iPhones */
-    image-rendering: -webkit-optimize-contrast;
-    image-rendering: crisp-edges;
-    -webkit-backface-visibility: hidden;
-    backface-visibility: hidden;
-    transform: translateZ(0); /* Enables hardware acceleration */
   }
 
-  /* Sharpness rule for internal canvas elements created by ease360 */
-  #viewer canvas, #viewer img {
-    image-rendering: -webkit-optimize-contrast;
-    image-rendering: crisp-edges;
+  /* FORCE SAFARI CANVAS TO USE CRISP/NEAREST FILTERING */
+  #viewer canvas {
+    width: 100% !important;
+    height: 100% !important;
+    image-rendering: -webkit-optimize-contrast !important;
+    image-rendering: crisp-edges !important;
+    image-rendering: pixelated !important;
   }
 
   #viewer:active {
@@ -104,16 +101,30 @@
     const START_FRAME_INDEX = 37;
     const startAngleDegree = Math.round((START_FRAME_INDEX / 40) * 360);
 
+    // Get exact Retina multiplier (e.g. 3x on iPhone 13 Mini)
+    const dpr = Math.min(window.devicePixelRatio || 1, 3);
+
     const viewer = ease360('#viewer', {
       frames: frames,
-      sourceWidth: 1080,
-      sourceHeight: 1920,
+      // Multiply dimensions by DPR so canvas allocates enough pixels for Retina screens
+      sourceWidth: 1080 * dpr,
+      sourceHeight: 1920 * dpr,
       damping: 0.92,
       frameDirection: -1,
-      startAngle: startAngleDegree,
-      // Matches the retina/high-DPI scale of mobile devices:
-      pixelRatio: Math.min(window.devicePixelRatio || 1, 2)
+      startAngle: startAngleDegree
     });
+
+    // Post-init fix: force 2D context image smoothing OFF on iOS
+    setTimeout(() => {
+      const canvas = document.querySelector('#viewer canvas');
+      if (canvas) {
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.imageSmoothingEnabled = false;
+          ctx.webkitImageSmoothingEnabled = false;
+        }
+      }
+    }, 100);
 
     // ===========================================================
     // AUTO-SPIN FEATURE
@@ -140,7 +151,7 @@
     const MAX_ZOOM = 3;
 
     function applyZoom() {
-      viewerEl.style.transform = 'scale(' + scale + ') translateZ(0)';
+      viewerEl.style.transform = 'scale(' + scale + ')';
     }
 
     stageEl.addEventListener('wheel', (e) => {
