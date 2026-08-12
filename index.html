@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>360° Product Viewer</title>
+
+<!-- ease360's stylesheet -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/ddintzner/ease360@main/ease360.css">
+
+<style>
+  html, body {
+    margin: 0;
+    height: 100%;
+    width: 100%;
+    overflow: hidden;
+    background: #111;
+    font-family: Arial, Helvetica, sans-serif;
+  }
+
+  #stage {
+    width: 100vw;
+    height: 100dvh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    touch-action: none;
+  }
+
+  #viewer {
+    height: 100dvh;
+    width: calc(100dvh * 9 / 16);
+    max-width: 100vw;
+    cursor: grab;
+    transform-origin: center center;
+    transition: transform 0.15s ease-out;
+  }
+  #viewer:active {
+    cursor: grabbing;
+  }
+
+  .hint {
+    position: fixed;
+    bottom: 20px;
+    left: 0;
+    right: 0;
+    text-align: center;
+    color: rgba(255,255,255,0.6);
+    font-size: 13px;
+    pointer-events: none;
+  }
+
+  #fullscreenBtn {
+    position: fixed;
+    top: 16px;
+    right: 16px;
+    background: rgba(0,0,0,0.5);
+    color: white;
+    border: 1px solid rgba(255,255,255,0.3);
+    border-radius: 6px;
+    padding: 8px 14px;
+    font-size: 13px;
+    cursor: pointer;
+  }
+  #fullscreenBtn:hover {
+    background: rgba(0,0,0,0.7);
+  }
+</style>
+</head>
+<body>
+
+  <div id="stage">
+    <div id="viewer"></div>
+  </div>
+
+  <p class="hint">Drag to spin &nbsp;•&nbsp; Scroll or pinch to zoom &nbsp;•&nbsp; Double-click to reset zoom</p>
+  <button id="fullscreenBtn">Fullscreen</button>
+
+  <!-- ease360's script -->
+  <script src="https://cdn.jsdelivr.net/gh/ddintzner/ease360@main/ease360-1.0.0.min.js"></script>
+
+  <script>
+    const frames = [];
+    for (let i = 1; i <= 40; i++) {
+      const num = String(i).padStart(4, '0');
+      frames.push('images/frame_' + num + '.jpg');
+    }
+
+    // Calculating 360° position for frame_0037 out of 40 frames: (37 / 40) * 360 = 333°
+    const START_FRAME_INDEX = 37;
+    const startAngleDegree = Math.round((START_FRAME_INDEX / 40) * 360);
+
+    const viewer = ease360('#viewer', {
+      frames: frames,
+      sourceWidth: 1080,
+      sourceHeight: 1920,
+      damping: 0.92,
+      frameDirection: -1,         // 1. Reverses drag direction (-1 reverses)
+      startAngle: startAngleDegree // 2. Starts at frame 37 angle
+    });
+
+    // ===========================================================
+    // 3. AUTO-SPIN FEATURE
+    // ===========================================================
+    const ENABLE_AUTO_SPIN = true; // Set to false to disable auto-spin
+    const AUTO_SPIN_SPEED = 1.0;   // Speed multiplier (e.g., 0.5 = slower, 2.0 = faster)
+
+    if (ENABLE_AUTO_SPIN) {
+      // Start built-in continuous rotation
+      viewer.spinOver(AUTO_SPIN_SPEED);
+
+      // Stop auto-spinning as soon as the user touches/drags
+      const stopAutoSpin = () => viewer.spinOut();
+      const stageEl = document.getElementById('stage');
+      stageEl.addEventListener('pointerdown', stopAutoSpin, { once: true });
+      stageEl.addEventListener('touchstart', stopAutoSpin, { once: true });
+    }
+
+    // ===========================================================
+    // ZOOM
+    // ===========================================================
+    const viewerEl = document.getElementById('viewer');
+    const stageEl = document.getElementById('stage');
+    let scale = 1;
+    const MIN_ZOOM = 1;
+    const MAX_ZOOM = 3;
+
+    function applyZoom() {
+      viewerEl.style.transform = 'scale(' + scale + ')';
+    }
+
+    stageEl.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      scale += e.deltaY * -0.001;
+      scale = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, scale));
+      applyZoom();
+    }, { passive: false });
+
+    let pinchStartDistance = null;
+    let pinchStartScale = 1;
+
+    function getPinchDistance(touches) {
+      const dx = touches[0].clientX - touches[1].clientX;
+      const dy = touches[0].clientY - touches[1].clientY;
+      return Math.sqrt(dx * dx + dy * dy);
+    }
+
+    stageEl.addEventListener('touchstart', (e) => {
+      if (e.touches.length === 2) {
+        pinchStartDistance = getPinchDistance(e.touches);
+        pinchStartScale = scale;
+      }
+    }, { passive: true });
+
+    stageEl.addEventListener('touchmove', (e) => {
+      if (e.touches.length === 2 && pinchStartDistance) {
+        e.preventDefault();
+        const newDistance = getPinchDistance(e.touches);
+        scale = pinchStartScale * (newDistance / pinchStartDistance);
+        scale = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, scale));
+        applyZoom();
+      }
+    }, { passive: false });
+
+    stageEl.addEventListener('touchend', (e) => {
+      if (e.touches.length < 2) pinchStartDistance = null;
+    });
+
+    viewerEl.addEventListener('dblclick', () => {
+      scale = 1;
+      applyZoom();
+    });
+
+    // ===========================================================
+    // FULLSCREEN BUTTON
+    // ===========================================================
+    const fullscreenBtn = document.getElementById('fullscreenBtn');
+
+    fullscreenBtn.addEventListener('click', () => {
+      if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen?.().catch(() => {});
+      } else {
+        document.exitFullscreen?.();
+      }
+    });
+
+    if (!document.documentElement.requestFullscreen) {
+      fullscreenBtn.style.display = 'none';
+    }
+  </script>
+
+</body>
+</html>
