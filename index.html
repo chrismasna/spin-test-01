@@ -2,12 +2,8 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<!-- viewport-fit=cover + fixed scale prevents Safari from autoscaling -->
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <title>360° Product Viewer</title>
-
-<!-- ease360's stylesheet -->
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/ddintzner/ease360@main/ease360.css">
 
 <style>
   html, body {
@@ -29,26 +25,29 @@
     touch-action: none;
   }
 
-  #viewer {
+  #viewer-container {
     height: 100dvh;
     width: calc(100dvh * 9 / 16);
     max-width: 100vw;
     cursor: grab;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     transform-origin: center center;
     transition: transform 0.15s ease-out;
   }
-
-  /* FORCE SAFARI CANVAS TO USE CRISP/NEAREST FILTERING */
-  #viewer canvas {
-    width: 100% !important;
-    height: 100% !important;
-    image-rendering: -webkit-optimize-contrast !important;
-    image-rendering: crisp-edges !important;
-    image-rendering: pixelated !important;
+  #viewer-container:active {
+    cursor: grabbing;
   }
 
-  #viewer:active {
-    cursor: grabbing;
+  /* Standard HTML img tag for crisp, native GPU scaling */
+  #viewer-img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    user-select: none;
+    -webkit-user-drag: none;
+    pointer-events: none;
   }
 
   .hint {
@@ -73,6 +72,7 @@
     padding: 8px 14px;
     font-size: 13px;
     cursor: pointer;
+    z-index: 10;
   }
   #fullscreenBtn:hover {
     background: rgba(0,0,0,0.7);
@@ -82,76 +82,107 @@
 <body>
 
   <div id="stage">
-    <div id="viewer"></div>
+    <div id="viewer-container">
+      <img id="viewer-img" alt="360 Product View">
+    </div>
   </div>
 
   <p class="hint">Drag to spin &nbsp;•&nbsp; Scroll or pinch to zoom &nbsp;•&nbsp; Double-click to reset zoom</p>
   <button id="fullscreenBtn">Fullscreen</button>
 
-  <!-- ease360's script -->
-  <script src="https://cdn.jsdelivr.net/gh/ddintzner/ease360@main/ease360-1.0.0.min.js"></script>
-
   <script>
-    const frames = [];
-    for (let i = 1; i <= 40; i++) {
+    const TOTAL_FRAMES = 40;
+    const START_FRAME = 37; // Starts at frame_0037
+    const DRAG_SENSITIVITY = 15; // Pixels dragged per frame change (lower = faster spin)
+    
+    // 1. Preload images into memory so spinning is instantaneous
+    const loadedImages = [];
+    for (let i = 1; i <= TOTAL_FRAMES; i++) {
       const num = String(i).padStart(4, '0');
-      frames.push('images/frame_' + num + '.jpg');
+      const img = new Image();
+      img.src = 'images/frame_' + num + '.jpg';
+      loadedImages.push(img);
     }
 
-    const START_FRAME_INDEX = 37;
-    const startAngleDegree = Math.round((START_FRAME_INDEX / 40) * 360);
+    const viewerImg = document.getElementById('viewer-img');
+    let currentFrame = START_FRAME - 1; // 0-indexed
 
-    // Get exact Retina multiplier (e.g. 3x on iPhone 13 Mini)
-    const dpr = Math.min(window.devicePixelRatio || 1, 3);
-
-    const viewer = ease360('#viewer', {
-      frames: frames,
-      // Multiply dimensions by DPR so canvas allocates enough pixels for Retina screens
-      sourceWidth: 1080 * dpr,
-      sourceHeight: 1920 * dpr,
-      damping: 0.92,
-      frameDirection: -1,
-      startAngle: startAngleDegree
-    });
-
-    // Post-init fix: force 2D context image smoothing OFF on iOS
-    setTimeout(() => {
-      const canvas = document.querySelector('#viewer canvas');
-      if (canvas) {
-        const ctx = canvas.getContext('2d');
-        if (ctx) {
-          ctx.imageSmoothingEnabled = false;
-          ctx.webkitImageSmoothingEnabled = false;
-        }
-      }
-    }, 100);
-
-    // ===========================================================
-    // AUTO-SPIN FEATURE
-    // ===========================================================
-    const ENABLE_AUTO_SPIN = true;
-    const AUTO_SPIN_SPEED = 1.0;
-
-    if (ENABLE_AUTO_SPIN) {
-      viewer.spinOver(AUTO_SPIN_SPEED);
-
-      const stopAutoSpin = () => viewer.spinOut();
-      const stageEl = document.getElementById('stage');
-      stageEl.addEventListener('pointerdown', stopAutoSpin, { once: true });
-      stageEl.addEventListener('touchstart', stopAutoSpin, { once: true });
+    function updateImage() {
+      viewerImg.src = loadedImages[currentFrame].src;
     }
+    updateImage();
 
-    // ===========================================================
-    // ZOOM
-    // ===========================================================
-    const viewerEl = document.getElementById('viewer');
+    // 2. Drag to spin (Reversed direction)
+    let isDragging = false;
+    let startX = 0;
+    let dragDistance = 0;
+
     const stageEl = document.getElementById('stage');
+
+    function onPointerDown(e) {
+      isDragging = true;
+      startX = e.clientX || (e.touches && e.touches[0].clientX) || 0;
+      dragDistance = 0;
+      stopAutoSpin();
+    }
+
+    function onPointerMove(e) {
+      if (!isDragging) return;
+      const x = e.clientX || (e.touches && e.touches[0].clientX) || 0;
+      const dx = x - startX;
+      
+      // Reverse direction: dragging right moves backwards through frames
+      if (Math.abs(dx) > DRAG_SENSITIVITY) {
+        const frameShift = Math.floor(dx / DRAG_SENSITIVITY);
+        currentFrame = (currentFrame - frameShift + TOTAL_FRAMES) % TOTAL_FRAMES;
+        startX = x;
+        updateImage();
+      }
+    }
+
+    function onPointerUp() {
+      isDragging = false;
+    }
+
+    stageEl.addEventListener('mousedown', onPointerDown);
+    window.addEventListener('mousemove', onPointerMove);
+    window.addEventListener('mouseup', onPointerUp);
+
+    stageEl.addEventListener('touchstart', onPointerDown, { passive: true });
+    window.addEventListener('touchmove', onPointerMove, { passive: true });
+    window.addEventListener('touchend', onPointerUp);
+
+    // 3. Auto-spin feature (starts automatically, stops on drag)
+    const ENABLE_AUTO_SPIN = true;
+    const AUTO_SPIN_SPEED = 40; // milliseconds per frame
+    let autoSpinInterval = null;
+
+    function startAutoSpin() {
+      if (!ENABLE_AUTO_SPIN || autoSpinInterval) return;
+      autoSpinInterval = setInterval(() => {
+        // Step forward / spin automatically
+        currentFrame = (currentFrame + 1) % TOTAL_FRAMES;
+        updateImage();
+      }, AUTO_SPIN_SPEED);
+    }
+
+    function stopAutoSpin() {
+      if (autoSpinInterval) {
+        clearInterval(autoSpinInterval);
+        autoSpinInterval = null;
+      }
+    }
+
+    startAutoSpin();
+
+    // 4. Zoom system (Scroll & Pinch)
+    const containerEl = document.getElementById('viewer-container');
     let scale = 1;
     const MIN_ZOOM = 1;
     const MAX_ZOOM = 3;
 
     function applyZoom() {
-      viewerEl.style.transform = 'scale(' + scale + ')';
+      containerEl.style.transform = 'scale(' + scale + ')';
     }
 
     stageEl.addEventListener('wheel', (e) => {
@@ -171,14 +202,14 @@
     }
 
     stageEl.addEventListener('touchstart', (e) => {
-      if (e.touches.length === 2) {
+      if (e.touches && e.touches.length === 2) {
         pinchStartDistance = getPinchDistance(e.touches);
         pinchStartScale = scale;
       }
     }, { passive: true });
 
     stageEl.addEventListener('touchmove', (e) => {
-      if (e.touches.length === 2 && pinchStartDistance) {
+      if (e.touches && e.touches.length === 2 && pinchStartDistance) {
         e.preventDefault();
         const newDistance = getPinchDistance(e.touches);
         scale = pinchStartScale * (newDistance / pinchStartDistance);
@@ -188,19 +219,16 @@
     }, { passive: false });
 
     stageEl.addEventListener('touchend', (e) => {
-      if (e.touches.length < 2) pinchStartDistance = null;
+      if (!e.touches || e.touches.length < 2) pinchStartDistance = null;
     });
 
-    viewerEl.addEventListener('dblclick', () => {
+    containerEl.addEventListener('dblclick', () => {
       scale = 1;
       applyZoom();
     });
 
-    // ===========================================================
-    // FULLSCREEN BUTTON
-    // ===========================================================
+    // Fullscreen logic
     const fullscreenBtn = document.getElementById('fullscreenBtn');
-
     fullscreenBtn.addEventListener('click', () => {
       if (!document.fullscreenElement) {
         document.documentElement.requestFullscreen?.().catch(() => {});
