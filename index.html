@@ -35,7 +35,21 @@
     cursor: grab;
     transform-origin: center center;
     transition: transform 0.15s ease-out;
+
+    /* Sharpen images on high-DPI screens like iPhones */
+    image-rendering: -webkit-optimize-contrast;
+    image-rendering: crisp-edges;
+    -webkit-backface-visibility: hidden;
+    backface-visibility: hidden;
+    transform: translateZ(0); /* Enables hardware acceleration */
   }
+
+  /* Sharpness rule for internal canvas elements created by ease360 */
+  #viewer canvas, #viewer img {
+    image-rendering: -webkit-optimize-contrast;
+    image-rendering: crisp-edges;
+  }
+
   #viewer:active {
     cursor: grabbing;
   }
@@ -87,7 +101,6 @@
       frames.push('images/frame_' + num + '.jpg');
     }
 
-    // Calculating 360° position for frame_0037 out of 40 frames: (37 / 40) * 360 = 333°
     const START_FRAME_INDEX = 37;
     const startAngleDegree = Math.round((START_FRAME_INDEX / 40) * 360);
 
@@ -96,21 +109,21 @@
       sourceWidth: 1080,
       sourceHeight: 1920,
       damping: 0.92,
-      frameDirection: -1,         // 1. Reverses drag direction (-1 reverses)
-      startAngle: startAngleDegree // 2. Starts at frame 37 angle
+      frameDirection: -1,
+      startAngle: startAngleDegree,
+      // Matches the retina/high-DPI scale of mobile devices:
+      pixelRatio: Math.min(window.devicePixelRatio || 1, 2)
     });
 
     // ===========================================================
-    // 3. AUTO-SPIN FEATURE
+    // AUTO-SPIN FEATURE
     // ===========================================================
-    const ENABLE_AUTO_SPIN = true; // Set to false to disable auto-spin
-    const AUTO_SPIN_SPEED = 1.0;   // Speed multiplier (e.g., 0.5 = slower, 2.0 = faster)
+    const ENABLE_AUTO_SPIN = true;
+    const AUTO_SPIN_SPEED = 1.0;
 
     if (ENABLE_AUTO_SPIN) {
-      // Start built-in continuous rotation
       viewer.spinOver(AUTO_SPIN_SPEED);
 
-      // Stop auto-spinning as soon as the user touches/drags
       const stopAutoSpin = () => viewer.spinOut();
       const stageEl = document.getElementById('stage');
       stageEl.addEventListener('pointerdown', stopAutoSpin, { once: true });
@@ -127,7 +140,7 @@
     const MAX_ZOOM = 3;
 
     function applyZoom() {
-      viewerEl.style.transform = 'scale(' + scale + ')';
+      viewerEl.style.transform = 'scale(' + scale + ') translateZ(0)';
     }
 
     stageEl.addEventListener('wheel', (e) => {
